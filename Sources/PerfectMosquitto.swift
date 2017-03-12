@@ -98,6 +98,10 @@ public class Mosquitto {
     ALL = 0xFFFF
   }//LogLevel
 
+  public enum MQTTVersion: UInt32 {
+    case V31 = 3, V311 = 4
+  }//end enum
+
   /// Message content
   public struct Message {
 
@@ -184,8 +188,19 @@ public class Mosquitto {
     let _ = mosquitto_lib_version(&mj, &mi, &re)
     return (Int(mj), Int(mi), Int(re))
     } //end get
-  } //end version
+  }//end version
 
+
+  public func setOption(_ version: MQTTVersion = .V31, value: UnsafeMutableRawPointer) throws {
+    guard let h = _handle else {
+      throw Mosquitto.Panic
+    }//end guard
+    let r = mosquitto_opts_set(h, mosq_opt_t(version.rawValue), value)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Mosquitto.Panic
+    }//end guard
+  }//end setOption
+  
   internal var _handle: OpaquePointer? = nil
 
   internal func setupCallbacks(_ h: OpaquePointer) {
@@ -392,6 +407,14 @@ public class Mosquitto {
     }//end get
   }//end socket
 
+  /// Returns true if there is data ready to be written on the socket.
+  public var writeReady: Bool? {
+    get {
+      guard let h = _handle else { return nil }
+      return mosquitto_want_write(h)
+    }//end get
+  }//end
+
   public func login(username: String, password: String) throws {
     guard let h = _handle else {
       throw Mosquitto.Panic
@@ -490,11 +513,38 @@ public class Mosquitto {
     }//end guard
   }//end unsubscribe
 
+  /// start network traffic
+  /// - throws:
+  ///   - Exception
+  public func start() throws {
+    guard let h = _handle else {
+      throw Mosquitto.Panic
+    }//end guard
+    let r = mosquitto_loop_start(h)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Exception(rawValue: r) ?? Exception.UNKNOWN
+    }//end guard
+  }//end start
+
+  /// stop network traffic
+  /// - throws:
+  ///   - Exception
+  public func stop(force: Bool = false) throws {
+    guard let h = _handle else {
+      throw Mosquitto.Panic
+    }//end guard
+    let r = mosquitto_loop_stop(h, force)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Exception(rawValue: r) ?? Exception.UNKNOWN
+    }//end guard
+  }//end start
+
   /// Deconstructor
   deinit {
     guard let h = _handle else {
       return
     }//end guard
+    let _ = mosquitto_loop_stop(h, true)
     mosquitto_destroy(h)
   }//end deinit
 }//end class
