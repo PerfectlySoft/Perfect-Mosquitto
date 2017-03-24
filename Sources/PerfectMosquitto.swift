@@ -31,20 +31,17 @@ var errno: Int32 {
 import cmosquitto
 
 extension String {
-  public init(utf8: [Int8]) {
-    self = utf8.withUnsafeBufferPointer { ptr -> String in
-      guard let p = ptr.baseAddress else { return "" }
-      return String(validatingUTF8: p) ?? ""
-    }//end init
-  }//end public
   public var UTF8: [Int8] {
     get {
-      return self.withCString { ptr -> [Int8] in
-        let p = UnsafeBufferPointer(start: ptr, count: self.utf8.count)
-        return Array(p)
-      }//end with
+      return self.utf8.map { Int8($0) }
     }//end get
   }//end var
+  /// fix some non-zero ending of buffer issue
+  public init(buffer: [Int8]) {
+    var buf = buffer
+    buf.append(0)
+    self = String(cString: buf)
+  }//end init
 }//end extension
 
 public class Mosquitto {
@@ -84,6 +81,13 @@ public class Mosquitto {
     EAI = 15,
     PROXY = 16
   }//end enum
+
+  /// Explain an exception
+  /// - parameters:
+  ///   - fault: Exception to explain
+  public static func Explain(_ fault: Exception) -> String {
+    return String(cString: mosquitto_strerror(fault.rawValue))
+  }//end Explain
 
   public enum LogLevel: Int32 {
     case NONE = 0x00,
@@ -133,12 +137,12 @@ public class Mosquitto {
     /// payload can also be set or get by a string
     public var string: String? {
       get {
-        let str = String(utf8: payload)
+        let str = String(buffer: payload)
         if str.isEmpty { return nil }
         return str
       }//end get
       set {
-        guard let str = string else {
+        guard let str = newValue else {
           payload = []
           return
         }//end guard
@@ -169,6 +173,8 @@ public class Mosquitto {
   public typealias EventLog = (LogLevel, String) -> Void
   public var OnLog: EventLog = { _, _ in }
 
+  public var tlsPassword = ""
+
   /// Initialize the libray, must call prior to all instances initialization.
   public static func OpenLibrary() {
     let _ = mosquitto_lib_init()
@@ -190,78 +196,201 @@ public class Mosquitto {
     } //end get
   }//end version
 
-
-  public func setOption(_ version: MQTTVersion = .V31, value: UnsafeMutableRawPointer) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = mosquitto_opts_set(h, mosq_opt_t(version.rawValue), value)
+  /// Used to set options for the client.
+  /// - parameters:
+  ///   - version: MQTTVersion, default is .V31
+  ///   - value: the option specific value
+  /// - throws:
+  ///   Exception
+  public func setClientOption(_ version: MQTTVersion = .V31, value: UnsafeMutableRawPointer) throws {
+    let r = mosquitto_opts_set(_handle, mosq_opt_t(version.rawValue), value)
     guard r == Exception.SUCCESS.rawValue else {
       throw Mosquitto.Panic
     }//end guard
   }//end setOption
   
-  internal var _handle: OpaquePointer? = nil
+  internal var _handle: OpaquePointer
 
+  /// Callback Pointer Manager, because Unmanaged is not applicable for mosquitto, such as 
+  /// call in the Swift:
+  /// let this = Unmanaged.passRetained(self).toOpaque()
+  /// call in the conventional C callback
+  /// let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
+  public static var Manager:[OpaquePointer: Mosquitto] = [:]
+
+  /// Configure the client for certificate based SSL/TLS support.
+  /// Must be called before <mosquitto_connect>. Cannot be used in conjunction with setTSL(psk).
+  /// Define the Certificate Authority certificates to be trusted (ie. the server
+  /// certificate must be signed with one of these certificates) using cafile.
+  ///
+  /// If the server you are connecting to requires clients to provide a
+  /// certificate, define certfile and keyfile with your client certificate and
+  /// private key. If your private key is encrypted, provide a password .
+  ///
+  /// - parameters:
+  ///   - caFile: String, path to a file containing the PEM encoded trusted CA certificate files. Either cafile or capath must not be NULL.
+  ///   - caPath: String, path to a directory containing the PEM encoded trusted CA certificate files. See mosquitto.conf for more details on configuring this directory. Either cafile or capath must not be nil.
+  ///   - certFile: String?, path to a file containing the PEM encoded certificate file for this client. If nil, keyfile will be ignored
+  ///   - keyfile: String?, path to a file containing the PEM encoded private key for this client. Will be igonred if no certFile presents
+  ///   - keyPass: String?, if keyfile is encrypted, set this password to decryption.
+  /// - throws:
+  ///   Exception
+  public func setTLS(caFile: String, caPath: String, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws {
+    let h = _handle
+    var r = Int32(0)
+    if let cf = certFile {
+      if let kf = keyFile {
+        if let kp = keyPass {
+          self.tlsPassword = kp
+          r = mosquitto_tls_set(h, caFile, caPath, cf, kf) { buf, size, rwflag, me in
+            guard let myself = me, let mosquitto = Mosquitto.Manager[unsafeBitCast(myself, to: OpaquePointer.self)] else {
+              return 0
+            }//end guard
+            if mosquitto.tlsPassword.isEmpty { return 0 }
+            return mosquitto.tlsPassword.withCString { ptr -> Int32 in
+              let l = Int32(strlen(ptr))
+              let sz = l < size ? l : size - 1
+              memcpy(buf, ptr, Int(sz))
+              return sz
+            }//end return password
+          }//end tls-set
+        }else{
+          r = mosquitto_tls_set(h, caFile, caPath, cf, kf, nil)
+        }//end if keyPass
+      }else {
+        r = mosquitto_tls_set(h, caFile, caPath, cf, nil, nil)
+      }//end if keyFile
+    } else {
+      r = mosquitto_tls_set(h, caFile, caPath, nil, nil, nil)
+    }//end if certFile
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Mosquitto.Panic
+    }//end guard
+  }//end setTLS
+
+  /// enable or disable TLS settings, use for testing purpose
+  /// - parameters:
+  ///   - ignore: set to true to disable TLS setting
+  /// - throws:
+  ///   Mosquitto.Panic
+  public func setTLS(ignore: Bool = true) throws {
+    let r = mosquitto_tls_insecure_set(_handle, ignore)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Mosquitto.Panic
+    }//end guard
+  }
+
+  /// SSL Verify Options
+  public enum SSLVerify: Int32 {
+    /// ignore verification, i.e., no security required.
+    case NONE = 0
+    /// the server certificate will be verified and the connection aborted if the verification fails
+    case PEER = 1
+  }//end enum
+
+  /// Set advanced SSL/TLS options.  Must be called before mosquitto_connect.
+  /// - parameters:
+  ///   - verify: SSLVerify, default value .PEER.
+  ///   - version: String, the version of the SSL/TLS protocol to use as a string. If nil, the default value is used.  The default value and the available values depend on the version of openssl that the library was compiled against. For openssl >= 1.0.1, the available options are tlsv1.2, tlsv1.1 and tlsv1, with tlv1.2 as the default. For openssl < 1.0.1, only tlsv1 is available.
+  ///   - ciphers: String, a string describing the ciphers available for use.  See the “openssl ciphers” tool for more information. If nil, the default ciphers will be used.
+  /// - throws:
+  ///   Mosquitto.Panic
+  public func setTLS(verify: SSLVerify = .PEER, version: String? = nil, ciphers: String? = nil) throws {
+    let r = mosquitto_tls_opts_set(_handle, verify.rawValue, version, ciphers)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Mosquitto.Panic
+    }//end guard
+  }//end setTLS
+
+  /// Configure the client for pre-shared-key based TLS support. 
+  /// Must be called before mosquitto_connect.
+  /// Cannot be used in conjunction with setTLS(caFile).
+  /// - parameters:
+  ///   - psk: String, the pre-shared-key in hex format with no leading “0x”.
+  ///   - identity: String, the identity of this client.May be used as the username depending on the server settings.
+  ///   - ciphers: String, a string describing the PSK ciphers available for use. See the “openssl ciphers” tool for more information. If nil, the default ciphers will be used.
+  /// - throws:
+  ///   Mosquitto.Panic
+  public func setTLS(psk: String, identity: String, ciphers: String? = nil) throws {
+    let r = mosquitto_tls_psk_set(_handle, psk, identity, ciphers)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Mosquitto.Panic
+    }//end guard
+  }//end setTLS
+
+  /// Used to tell the library that your application is using threads, but not `start()`.
+  /// The library operates slightly differently when not in threaded mode in order to simplify its operation. 
+  /// If you are managing your own threads and do not use this function you will experience crashes due to race conditions.When using <mosquitto_loop_start>, this is set automatically.
+  /// - parameters:
+  ///   - yes: Bool, true for enabling threads
+  public func enableThreads(_ yes: Bool) throws {
+    let r = mosquitto_threaded_set(_handle, yes)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Mosquitto.Panic
+    }//end guard
+  }//end enableThreads
+
+  /// setup all callbacks
   internal func setupCallbacks(_ h: OpaquePointer) {
-    mosquitto_connect_callback_set(h) { _, me, code in
-      guard let myself = me else {
+    mosquitto_connect_callback_set(h) { me, _, code in
+      guard let this = me, let mosquitto = Mosquitto.Manager[this] else {
         return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       guard let ret = ConnectionStatus(rawValue: code) else {
         mosquitto.OnConnect(.ELSE)
         return
       }//end ret
       mosquitto.OnConnect(ret)
     }//end set
-    mosquitto_disconnect_callback_set(h) { _, me, code in
-      guard let myself = me else {
+    mosquitto_disconnect_callback_set(h) { me, _, code in
+      guard let this = me, let mosquitto = Mosquitto.Manager[this] else {
         return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       guard code == ConnectionStatus.SUCCESS.rawValue else {
         mosquitto.OnDisconnect(.ELSE)
         return
       }//end ret
       mosquitto.OnDisconnect(.SUCCESS)
     }//end set
-    mosquitto_publish_callback_set(h) { _, me, code in
-      guard let myself = me else {
+    mosquitto_publish_callback_set(h) { me, _, code in
+      guard let this = me, let mosquitto = Mosquitto.Manager[this] else {
         return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       mosquitto.OnPublish(code)
     }//end set
-    mosquitto_message_callback_set(h) { _, me, pMsg in
-      guard let myself = me, let msg = pMsg else {
+    mosquitto_message_callback_set(h) { me, _, pMsg in
+      guard let this = me,
+        let mosquitto = Mosquitto.Manager[this],
+        let msg = pMsg else {
         return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       mosquitto.OnMessage(Message(message: msg.pointee))
       // necessary?
       // mosquitto_message_free(&pMsg)
     }//end set
-    mosquitto_subscribe_callback_set(h) { _, me, mid, count, granted_qos in
-      guard let myself = me, let pQos = granted_qos else {
+    mosquitto_subscribe_callback_set(h) { me, _, mid, count, granted_qos in
+      guard let this = me,
+        let mosquitto = Mosquitto.Manager[this],
+        let pQos = granted_qos else {
         return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       let qos = UnsafeBufferPointer(start: pQos, count: Int(count))
       mosquitto.OnSubscribe(mid, Array(qos))
     }//end set
-    mosquitto_unsubscribe_callback_set(h) { _, me, mid in
-      guard let myself = me else {
-        return
+    mosquitto_unsubscribe_callback_set(h) { me, _, mid in
+      guard let this = me,
+        let mosquitto = Mosquitto.Manager[this]
+        else {
+          return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       mosquitto.OnUnsubscribe(mid)
     }//end set
-    mosquitto_log_callback_set(h) { _, me, level, pstr in
-      guard let myself = me, let str = pstr else {
+    mosquitto_log_callback_set(h) { me, _, level, pstr in
+      guard let this = me,
+        let mosquitto = Mosquitto.Manager[this],
+        let str = pstr else {
         return
       }//end guard
-      let mosquitto = Unmanaged<Mosquitto>.fromOpaque(myself).takeUnretainedValue()
       let string = String(cString: str)
       guard let lvl = LogLevel(rawValue: level) else {
         mosquitto.OnLog(.ALL, string)
@@ -285,19 +414,14 @@ public class Mosquitto {
   /// - parameters:
   ///   - id: String to use as the client id. If nil, a random client id will be generated and cleanSession will be automatically overrudde to true.
   ///   - cleanSession: Bool, set to true to instruct the broker to clean all messages and subscriptions on disconnect, false to instruct it to keep them.
-  /// - throws:
-  ///   Exception
-  public init(id: String? = nil, cleanSession: Bool = true) throws {
-    let this = Unmanaged.passRetained(self).toOpaque()
+  public init(id: String? = nil, cleanSession: Bool = true) {
     if let name = id {
-      _handle = mosquitto_new(name, cleanSession, this)
+      _handle = mosquitto_new(name, cleanSession, nil)
     }else {
-      _handle = mosquitto_new(nil, true, this)
+      _handle = mosquitto_new(nil, true, nil)
     }//end if
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    setupCallbacks(h)
+    Mosquitto.Manager[_handle] = self
+    setupCallbacks(_handle)
   }//end init
 
   /// This function allows an existing mosquitto client to be reused. Call on a mosquitto instance to close any open network connections, free memory and reinitialise the client with the new parameters.
@@ -307,20 +431,17 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func reset(id: String? = nil, cleanSession: Bool = true) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let this = Unmanaged.passRetained(self).toOpaque()
     var ret: Int32
+    let h = unsafeBitCast(_handle, to: UnsafeMutableRawPointer.self)
     if let name = id {
-      ret = mosquitto_reinitialise(h, name, cleanSession, this)
+      ret = mosquitto_reinitialise(_handle, name, cleanSession, h)
     }else {
-      ret = mosquitto_reinitialise(h, nil, true, this)
+      ret = mosquitto_reinitialise(_handle, nil, true, h)
     }//end if
     guard ret == Exception.SUCCESS.rawValue else {
       throw Mosquitto.Panic
     }//end guard
-    setupCallbacks(h)
+    setupCallbacks(_handle)
   }//end init
 
   /// Connect to an MQTT broker.
@@ -332,27 +453,27 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func connect(host:String, port: Int32 = 1883, keepAlive: Int32 = 10, binding: String? = nil, asynchronous: Bool = true) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
     var r = Int32(0)
     if let b = binding {
-      r = asynchronous ? mosquitto_connect_bind_async(h, host, port, keepAlive, b)
-        : mosquitto_connect_bind(h, host, port, keepAlive, b)
+      r = asynchronous ? mosquitto_connect_bind_async(_handle, host, port, keepAlive, b)
+        : mosquitto_connect_bind(_handle, host, port, keepAlive, b)
     }else{
-      r = asynchronous ? mosquitto_connect_async(h, host, port, keepAlive)
-        : mosquitto_connect(h, host, port, keepAlive)
+      r = asynchronous ? mosquitto_connect_async(_handle, host, port, keepAlive)
+        : mosquitto_connect(_handle, host, port, keepAlive)
     }//end if
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
   }//end connect
 
+  /// This function provides an easy way of reconnecting to a broker after a connection has been lost. 
+  /// Don't call it before `connect()`
+  /// - parameters:
+  ///   - asynchronous: Bool, will return immediately and will not block the primary thread if true
+  /// - throws:
+  ///   Exceptoin
   public func reconnect(_ asynchronous: Bool = true) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = asynchronous ? mosquitto_reconnect_async(h) : mosquitto_reconnect(h)
+    let r = asynchronous ? mosquitto_reconnect_async(_handle) : mosquitto_reconnect(_handle)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
@@ -379,47 +500,43 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func reconnectSetDelay(delay: UInt32 = 2, delayMax: UInt32 = 10, backOff: Bool = false) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = mosquitto_reconnect_delay_set(h, delay, delayMax, backOff)
+    let r = mosquitto_reconnect_delay_set(_handle, delay, delayMax, backOff)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
   }//end setdelay
 
   public func disconnect() throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = mosquitto_disconnect(h)
+    let r = mosquitto_disconnect(_handle)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
   }//end disconnect
 
+  /// get the socket handle of mosquitto
   public var socket: Int32? {
     get {
-      guard let h = _handle else { return nil }
-      let s = mosquitto_socket(h)
+      let s = mosquitto_socket(_handle)
       guard s > -1 else { return nil }
       return s
     }//end get
   }//end socket
 
   /// Returns true if there is data ready to be written on the socket.
-  public var writeReady: Bool? {
+  public var writeReady: Bool {
     get {
-      guard let h = _handle else { return nil }
-      return mosquitto_want_write(h)
+      return mosquitto_want_write(_handle)
     }//end get
   }//end
 
-  public func login(username: String, password: String) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = mosquitto_username_pw_set(h, username, password)
+  /// Configure username and password for a mosquitton instance.
+  /// - parameters:
+  ///   - username: String?, the username to send as a string, or nil to disable authentication.
+  ///   - password: String?, the password to send as a string. Set to nil when username is valid in order to send just a username.
+  /// - throws:
+  ///   Exception
+  public func login(username: String? = nil, password: String? = nil) throws {
+    let r = mosquitto_username_pw_set(_handle, username, password)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
@@ -431,16 +548,13 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func setConfigWill(message: Message?) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
     var r = Int32(0)
     if let m = message {
       r = m.payload.withUnsafeBufferPointer { ptr -> Int32 in
-        return mosquitto_will_set(h, m.topic, Int32(m.payload.count), ptr.baseAddress, m.qos, m.retain)
+        return mosquitto_will_set(_handle, m.topic, Int32(m.payload.count), ptr.baseAddress, m.qos, m.retain)
       }//end r
     }else {
-      r = mosquitto_will_clear(h)
+      r = mosquitto_will_clear(_handle)
     }//end if
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
@@ -455,18 +569,41 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func publish(message: Message) throws ->Int32 {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
     var mid = Int32(0)
     let r = message.payload.withUnsafeBufferPointer { ptr -> Int32 in
-        return mosquitto_publish(h, &mid, message.topic, Int32(message.payload.count), ptr.baseAddress, message.qos, message.retain)
+        return mosquitto_publish(_handle, &mid, message.topic, Int32(message.payload.count), ptr.baseAddress, message.qos, message.retain)
     }//end r
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
     return mid
   }//end setConfigWill
+
+  /// Set the number of QoS 1 and 2 messages that can be “in flight” at one time.  
+  /// An in flight message is part way through its delivery flow. 
+  /// Attempts to send further messages with publish() will result in 
+  /// the messages being queued until the number of in flight messages reduces.
+  /// A higher number here results in greater message throughput, 
+  /// but if set higher than the maximum in flight messages on the broker 
+  /// may lead to delays in the messages being acknowledged.
+  /// - parameters:
+  ///   - max: UInt32, the maximum number of inflight messages. Defaults to 20. Set to 0 for no maximum.
+  /// - throws:
+  ///   - Exception
+  public func setInflightMessages(max: UInt32 = 20) throws {
+    let r = mosquitto_max_inflight_messages_set(_handle, max)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Exception(rawValue: r) ?? Exception.UNKNOWN
+    }//end guard
+  }//end func
+
+  /// Set the number of seconds to wait before retrying messages.  
+  /// This applies to publish messages with QoS>0.  May be called at any time.
+  /// - parameters:
+  ///   - max: UInt32, the number of seconds to wait for a response before retrying.  Defaults to 20.
+  public func setMessageRetry(max: UInt32 = 20) {
+    mosquitto_message_retry_set(_handle, max)
+  }//end func
 
   /// Subscribe to a topic
   /// - parameters:
@@ -476,15 +613,12 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func subscribe(messageId: Int32? = nil, topic: String, qos: Int32 = 0) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
     var r = Int32(0)
     if let msgId = messageId {
       var mid = msgId
-      r = mosquitto_subscribe(h, &mid, topic, qos)
+      r = mosquitto_subscribe(_handle, &mid, topic, qos)
     } else {
-      r = mosquitto_subscribe(h, nil, topic, qos)
+      r = mosquitto_subscribe(_handle, nil, topic, qos)
     }//end if
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
@@ -498,15 +632,12 @@ public class Mosquitto {
   /// - throws:
   ///   Exception
   public func unsubscribe(messageId: Int32? = nil, topic: String) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
     var r = Int32(0)
     if let msgId = messageId {
       var mid = msgId
-      r = mosquitto_unsubscribe(h, &mid, topic)
+      r = mosquitto_unsubscribe(_handle, &mid, topic)
     } else {
-      r = mosquitto_unsubscribe(h, nil, topic)
+      r = mosquitto_unsubscribe(_handle, nil, topic)
     }//end if
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
@@ -517,10 +648,7 @@ public class Mosquitto {
   /// - throws:
   ///   - Exception
   public func start() throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = mosquitto_loop_start(h)
+    let r = mosquitto_loop_start(_handle)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
@@ -530,10 +658,7 @@ public class Mosquitto {
   /// - throws:
   ///   - Exception
   public func stop(force: Bool = false) throws {
-    guard let h = _handle else {
-      throw Mosquitto.Panic
-    }//end guard
-    let r = mosquitto_loop_stop(h, force)
+    let r = mosquitto_loop_stop(_handle, force)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
@@ -541,10 +666,8 @@ public class Mosquitto {
 
   /// Deconstructor
   deinit {
-    guard let h = _handle else {
-      return
-    }//end guard
-    let _ = mosquitto_loop_stop(h, true)
-    mosquitto_destroy(h)
+    let _ = mosquitto_loop_stop(_handle, true)
+    let _ = mosquitto_disconnect(_handle)
+    mosquitto_destroy(_handle)
   }//end deinit
 }//end class
