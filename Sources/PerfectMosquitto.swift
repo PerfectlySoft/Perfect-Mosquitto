@@ -33,7 +33,10 @@ import cmosquitto
 extension String {
   public var UTF8: [Int8] {
     get {
-      return self.utf8.map { Int8($0) }
+      return self.withCString { ptr -> [Int8] in
+        let p = UnsafeBufferPointer<Int8>(start: ptr, count: self.utf8.count)
+        return Array(p)
+      }
     }//end get
   }//end var
   /// fix some non-zero ending of buffer issue
@@ -124,6 +127,7 @@ public class Mosquitto {
     /// determin if the message should be retained on broker
     public var retain = false
 
+    /// constructor for receiving a message
     public init(message: mosquitto_message) {
       id = message.mid
       topic = String(cString: message.topic)
@@ -133,6 +137,14 @@ public class Mosquitto {
       qos = message.qos
       retain = message.retain
     }//init
+
+    /// constructor for sending a message
+    public init(id: Int32 = 0, topic: String = "", qos: Int32 = 0, retain: Bool = false) {
+      self.id = id
+      self.topic = topic
+      self.qos = qos
+      self.retain = retain
+    }//end init
 
     /// payload can also be set or get by a string
     public var string: String? {
@@ -175,14 +187,25 @@ public class Mosquitto {
 
   public var tlsPassword = ""
 
+  // singleton to avoid multiple switching on; not thread safe
+  private static var LibrarySwitch = false
+
   /// Initialize the libray, must call prior to all instances initialization.
+  /// NOTE: Not Thread Safe
   public static func OpenLibrary() {
-    let _ = mosquitto_lib_init()
+    if LibrarySwitch == false {
+      LibrarySwitch = true
+      let _ = mosquitto_lib_init()
+    }//end if
   }//end func
 
   /// Initialize the libray, must call once all instances stopped.
+  /// NOTE: Not Thread Safe
   public static func CloseLibrary() {
-    let _ = mosquitto_lib_cleanup()
+    if LibrarySwitch {
+      LibrarySwitch = false
+      let _ = mosquitto_lib_cleanup()
+    }//end if
   }//end func
 
   /// Get the version of library
@@ -219,7 +242,7 @@ public class Mosquitto {
   public static var Manager:[OpaquePointer: Mosquitto] = [:]
 
   /// Configure the client for certificate based SSL/TLS support.
-  /// Must be called before <mosquitto_connect>. Cannot be used in conjunction with setTSL(psk).
+  /// Must be called before `connect()`. Cannot be used in conjunction with setTSL(psk).
   /// Define the Certificate Authority certificates to be trusted (ie. the server
   /// certificate must be signed with one of these certificates) using cafile.
   ///
@@ -250,7 +273,11 @@ public class Mosquitto {
             return mosquitto.tlsPassword.withCString { ptr -> Int32 in
               let l = Int32(strlen(ptr))
               let sz = l < size ? l : size - 1
-              memcpy(buf, ptr, Int(sz))
+              #if os(Linux)
+                memcpy(buf!, ptr, Int(sz))
+              #else
+                memcpy(buf, ptr, Int(sz))
+              #endif
               return sz
             }//end return password
           }//end tls-set
@@ -288,7 +315,7 @@ public class Mosquitto {
     case PEER = 1
   }//end enum
 
-  /// Set advanced SSL/TLS options.  Must be called before mosquitto_connect.
+  /// Set advanced SSL/TLS options.  Must be called before `connect()`.
   /// - parameters:
   ///   - verify: SSLVerify, default value .PEER.
   ///   - version: String, the version of the SSL/TLS protocol to use as a string. If nil, the default value is used.  The default value and the available values depend on the version of openssl that the library was compiled against. For openssl >= 1.0.1, the available options are tlsv1.2, tlsv1.1 and tlsv1, with tlv1.2 as the default. For openssl < 1.0.1, only tlsv1 is available.
@@ -303,7 +330,7 @@ public class Mosquitto {
   }//end setTLS
 
   /// Configure the client for pre-shared-key based TLS support. 
-  /// Must be called before mosquitto_connect.
+  /// Must be called before `connect()`.
   /// Cannot be used in conjunction with setTLS(caFile).
   /// - parameters:
   ///   - psk: String, the pre-shared-key in hex format with no leading “0x”.
@@ -332,7 +359,7 @@ public class Mosquitto {
 
   /// setup all callbacks
   internal func setupCallbacks(_ h: OpaquePointer) {
-    mosquitto_connect_callback_set(h) { me, _, code in
+    let _ = mosquitto_connect_callback_set(h) { me, obj, code in
       guard let this = me, let mosquitto = Mosquitto.Manager[this] else {
         return
       }//end guard
@@ -342,7 +369,7 @@ public class Mosquitto {
       }//end ret
       mosquitto.OnConnect(ret)
     }//end set
-    mosquitto_disconnect_callback_set(h) { me, _, code in
+    let _ = mosquitto_disconnect_callback_set(h) { me, _, code in
       guard let this = me, let mosquitto = Mosquitto.Manager[this] else {
         return
       }//end guard
@@ -352,13 +379,13 @@ public class Mosquitto {
       }//end ret
       mosquitto.OnDisconnect(.SUCCESS)
     }//end set
-    mosquitto_publish_callback_set(h) { me, _, code in
+    let _ = mosquitto_publish_callback_set(h) { me, _, code in
       guard let this = me, let mosquitto = Mosquitto.Manager[this] else {
         return
       }//end guard
       mosquitto.OnPublish(code)
     }//end set
-    mosquitto_message_callback_set(h) { me, _, pMsg in
+    let _ = mosquitto_message_callback_set(h) { me, _, pMsg in
       guard let this = me,
         let mosquitto = Mosquitto.Manager[this],
         let msg = pMsg else {
@@ -368,7 +395,7 @@ public class Mosquitto {
       // necessary?
       // mosquitto_message_free(&pMsg)
     }//end set
-    mosquitto_subscribe_callback_set(h) { me, _, mid, count, granted_qos in
+    let _ = mosquitto_subscribe_callback_set(h) { me, _, mid, count, granted_qos in
       guard let this = me,
         let mosquitto = Mosquitto.Manager[this],
         let pQos = granted_qos else {
@@ -377,7 +404,7 @@ public class Mosquitto {
       let qos = UnsafeBufferPointer(start: pQos, count: Int(count))
       mosquitto.OnSubscribe(mid, Array(qos))
     }//end set
-    mosquitto_unsubscribe_callback_set(h) { me, _, mid in
+    let _ = mosquitto_unsubscribe_callback_set(h) { me, _, mid in
       guard let this = me,
         let mosquitto = Mosquitto.Manager[this]
         else {
@@ -385,7 +412,7 @@ public class Mosquitto {
       }//end guard
       mosquitto.OnUnsubscribe(mid)
     }//end set
-    mosquitto_log_callback_set(h) { me, _, level, pstr in
+    let _ = mosquitto_log_callback_set(h) { me, _, level, pstr in
       guard let this = me,
         let mosquitto = Mosquitto.Manager[this],
         let str = pstr else {
@@ -452,7 +479,7 @@ public class Mosquitto {
   ///   - binding: String, optional, bind socket to a specific address
   /// - throws:
   ///   Exception
-  public func connect(host:String, port: Int32 = 1883, keepAlive: Int32 = 10, binding: String? = nil, asynchronous: Bool = true) throws {
+  public func connect(host:String = "localhost", port: Int32 = 1883, keepAlive: Int32 = 60, binding: String? = nil, asynchronous: Bool = false) throws {
     var r = Int32(0)
     if let b = binding {
       r = asynchronous ? mosquitto_connect_bind_async(_handle, host, port, keepAlive, b)
@@ -568,6 +595,7 @@ public class Mosquitto {
   ///   message id
   /// - throws:
   ///   Exception
+  @discardableResult
   public func publish(message: Message) throws ->Int32 {
     var mid = Int32(0)
     let r = message.payload.withUnsafeBufferPointer { ptr -> Int32 in
@@ -589,7 +617,7 @@ public class Mosquitto {
   /// - parameters:
   ///   - max: UInt32, the maximum number of inflight messages. Defaults to 20. Set to 0 for no maximum.
   /// - throws:
-  ///   - Exception
+  ///   Exception
   public func setInflightMessages(max: UInt32 = 20) throws {
     let r = mosquitto_max_inflight_messages_set(_handle, max)
     guard r == Exception.SUCCESS.rawValue else {
@@ -644,9 +672,10 @@ public class Mosquitto {
     }//end guard
   }//end unsubscribe
 
-  /// start network traffic
+  /// start network traffic in an independent thread; If synchronous operation
+  /// is need, use `wait()` instead.
   /// - throws:
-  ///   - Exception
+  ///   Exception
   public func start() throws {
     let r = mosquitto_loop_start(_handle)
     guard r == Exception.SUCCESS.rawValue else {
@@ -656,13 +685,34 @@ public class Mosquitto {
 
   /// stop network traffic
   /// - throws:
-  ///   - Exception
-  public func stop(force: Bool = false) throws {
+  ///   Exception
+  public func stop(force: Bool = true) throws {
     let r = mosquitto_loop_stop(_handle, force)
     guard r == Exception.SUCCESS.rawValue else {
       throw Exception(rawValue: r) ?? Exception.UNKNOWN
     }//end guard
   }//end start
+
+  /// The main network loop for the client. If you don't want it block the main
+  /// thread, try start()/stop()
+  /// You must call this frequently in order to keep communications 
+  /// between the client and broker working.  If incoming data is present 
+  /// it will then be processed.  Outgoing commands, from e.g.  publish(), 
+  /// are normally sent immediately that their function is called, 
+  /// but this is not always possible.  wait() will also attempt to send 
+  /// any remaining outgoing messages, which also includes commands that 
+  /// are part of the flow for messages with QoS>0.
+  /// - parameters:
+  ///   - timeout: UInt, Maximum number of milliseconds to wait for network activity in the select() call before timing out. By default, set to 0 for instant return.  Set negative to use the default of 1000ms.
+  ///   - maxPackets: Int32, this parameter is currently unused and should be set to 1 for future compatibility.
+  /// - throws:
+  ///   Exception
+  public func wait(_ timeout: Int32 = 0, maxPackets:Int32 = 1) throws {
+    let r = mosquitto_loop(_handle, timeout, maxPackets)
+    guard r == Exception.SUCCESS.rawValue else {
+      throw Exception(rawValue: r) ?? Exception.UNKNOWN
+    }//end guard
+  }//end wait
 
   /// Deconstructor
   deinit {

@@ -18,32 +18,257 @@
 //
 import XCTest
 @testable import PerfectMosquitto
+import Foundation
 
 class PerfectMosquittoTests: XCTestCase {
-    func testExample() {
-      Mosquitto.OpenLibrary()
-      Mosquitto.CloseLibrary()
-      let v = Mosquitto.Version
-      print(v)
-      XCTAssertEqual(v.major, 1)
-      XCTAssertEqual(v.minor, 4)
-      #if os(Linux)
-        XCTAssertEqual(v.revision, 8)
-      #else
-        XCTAssertEqual(v.revision, 11)
-      #endif
 
+  deinit {
+    Mosquitto.CloseLibrary()
+
+  }
+  func testConnection() {
+
+    let testID = "01-con-discon-success"
+    let m = Mosquitto(id: testID)
+    var connection = false
+    m.OnConnect = { status in
+      if status == .SUCCESS {
+        connection = true
+      }else{
+        XCTFail("\(testID) connection failed: \(status)")
+      }//end if
+    }//end OnConnect
+    do {
+      try m.connect()
+    }catch(let err) {
+      XCTFail("\(testID) connect() fault: \(err)")
+    }//end do
+    var i = 0
+    while connection == false && i < 1000 {
       do {
-        let _ = try Mosquitto()
+        try m.wait(0)
       }catch(let err) {
-        print("fault: \(err)")
-      }
-    }
+        XCTFail("\(testID) stop() fault: \(err)")
+        return
+      }//end do
+      i += 1
+    }//next
+    print("---------------- \(testID) --------------")
+    print("connection for \(i) ticks")
+    do {
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
 
+  func testSubscription() {
 
-    static var allTests : [(String, (PerfectMosquittoTests) -> () throws -> Void)] {
-        return [
-            ("testExample", testExample),
-        ]
+    let testID = "subscribe-qos0-test"
+    let m = Mosquitto(id: testID)
+    var subscribed = false
+    m.OnConnect = { status in
+      guard status == .SUCCESS else {
+        XCTFail("\(testID) connection failed: \(status)")
+        return
+      }//end if
+      do {
+        try m.subscribe(topic: "qos0/test")
+      }catch (let err) {
+        XCTFail("\(testID) subscription failure: \(err)")
+      }//end catch
+    }//end OnConnect
+    m.OnSubscribe = { id, qosArray in
+      subscribed = true
+      print(id)
+      print(qosArray)
+    }//end onsubscribe
+    do {
+      try m.connect()
+    }catch(let err) {
+      XCTFail("\(testID) connection() fault: \(err)")
+    }//end do
+    var i = 0
+    while subscribed == false && i < 1000 {
+      do {
+        try m.wait(0)
+      }catch(let err) {
+        XCTFail("\(testID) stop() fault: \(err)")
+        return
+      }//end do
+      i += 1
+    }//next
+    print("---------------- \(testID) --------------")
+    print("subscription for \(i) ticks")
+    do {
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
+
+  func testUnsubscription() {
+
+    let testID = "unsubscribe-test"
+    let m = Mosquitto(id: testID)
+    var unsubscribed = false
+    m.OnConnect = { status in
+      guard status == .SUCCESS else {
+        XCTFail("\(testID) connection failed: \(status)")
+        return
+      }//end if
+      do {
+        try m.unsubscribe(topic: testID)
+      }catch (let err) {
+        XCTFail("\(testID) unsubscribe failure: \(err)")
+      }//end catch
+    }//end OnConnect
+    m.OnUnsubscribe = { result in
+      unsubscribed = true
+      print(result)
+    }//end onsubscribe
+    do {
+      try m.connect()
+    }catch(let err) {
+      XCTFail("\(testID) connection() fault: \(err)")
+    }//end do
+    var i = 0
+    while unsubscribed == false && i < 1000 {
+      do {
+        try m.wait(0)
+      }catch(let err) {
+        XCTFail("\(testID) stop() fault: \(err)")
+        return
+      }//end do
+      i += 1
+    }//next
+    print("---------------- \(testID) --------------")
+    print("unsubscription for \(i) ticks")
+    do {
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
+
+  func testMessaging() {
+
+    let testID = "publish-qos1-test"
+    let topic = "publish/test"
+    let m = Mosquitto(id: testID)
+    var received = 0
+    m.OnConnect = { status in
+      guard status == .SUCCESS else {
+        XCTFail("\(testID) connection failed: \(status)")
+        return
+      }//end if
+    }//end OnConnect
+    m.OnMessage = { msg in
+      print("\(testID) received #\(msg.id) => \(msg.string!)")
+      received += 1
+    }//end on Message
+    do {
+      try m.connect()
+      m.setMessageRetry(max: 3)
+      try m.subscribe(topic: topic)
+    }catch(let err) {
+      XCTFail("\(testID) connection() fault: \(err)")
+    }//end do
+    var i = 0
+    var j = 0
+    let total = 10
+    while received < total && i < 3000 {
+      do {
+        if j <= total {
+          var msg = Mosquitto.Message()
+          msg.id = Int32(j)
+          j += 1
+          msg.topic = topic
+          msg.string = "publication test 🇨🇳🇨🇦 #\(j)"
+          let _ = try m.publish(message: msg)
+        }//end if
+        try m.wait(0)
+        i += 1
+      }catch(let err) {
+        XCTFail("\(testID) stop() fault: \(err)")
+        return
+      }//end do
+    }//next
+    print("---------------- \(testID) --------------")
+    print("receiving for \(received) ticks")
+    do {
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
+
+  func testThreadMessaging() {
+
+    let testID = "publish-threads-test"
+    let topic = "publish/test2"
+    let m = Mosquitto(id: testID)
+    let total = 10
+    var received = 0
+    m.OnConnect = { status in
+      guard status == .SUCCESS else {
+        XCTFail("\(testID) connection failed: \(status)")
+        return
+      }//end if
+    }//end OnConnect
+
+    let exp = expectation(description: testID)
+
+    m.OnMessage = { msg in
+      print("\(testID) received #\(msg.id) => \(msg.string!)")
+      received += 1
+      if received == total {
+        exp.fulfill()
+      }//end if
+    }//end on Message
+    do {
+      try m.connect()
+      try m.subscribe(topic: topic)
+      try m.start()
+    }catch(let err) {
+      XCTFail("\(testID) connection() fault: \(err)")
+    }//end do
+    for i in 0 ... total + 1 {
+      do {
+        var msg = Mosquitto.Message()
+        msg.id = Int32(i)
+        msg.topic = topic
+        msg.string = "thread test 🇨🇳🇨🇦 #\(i)"
+        let _ = try m.publish(message: msg)
+      }catch(let err) {
+        XCTFail("\(testID) stop() fault: \(err)")
+        return
+      }//end do
+    }//next
+    self.waitForExpectations(timeout: 5) { timeoutErr in
+      if let err = timeoutErr {
+        XCTFail("\(testID) timeout \(err)")
+      }//end if
     }
+    print("---------------- \(testID) --------------")
+    print("receiving for \(received) ticks")
+    do {
+      try m.stop()
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
+
+  static var allTests : [(String, (PerfectMosquittoTests) -> () throws -> Void)] {
+    Mosquitto.OpenLibrary()
+
+    return [
+      ("testConnection", testConnection),
+      ("testSubscription", testSubscription),
+      ("testUnsubscription", testUnsubscription),
+      ("testMessaging", testMessaging),
+      ("testThreadMessaging", testThreadMessaging)
+    ]
+  }
 }
