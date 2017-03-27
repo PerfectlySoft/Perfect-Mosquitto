@@ -260,6 +260,47 @@ class PerfectMosquittoTests: XCTestCase {
     }//end do
   }
 
+  func testPW() {
+
+    let testID = "01-unpwd-set"
+    let m = Mosquitto(id: testID)
+    do {
+      try m.login(username: "uname", password: ";'[08gn=#")
+      try m.connect()
+    }catch(let err) {
+      XCTFail("\(testID) connect() fault: \(err)")
+    }//end do
+    print("---------------- \(testID) --------------")
+    print("connection for password / username")
+    do {
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
+
+  func testWill() {
+
+    let testID = "01-will-set"
+    let m = Mosquitto(id: testID)
+    do {
+      var msg = Mosquitto.Message()
+      msg.topic = "topic/on/unexpected/disconnect"
+      msg.string = "will message"
+      try m.setConfigWill(message: msg)
+      try m.connect()
+    }catch(let err) {
+      XCTFail("\(testID) connect() fault: \(err)")
+    }//end do
+    print("---------------- \(testID) --------------")
+    print("connection for password / username")
+    do {
+      try m.disconnect()
+    }catch(let err) {
+      XCTFail("\(testID) disconnect() fault: \(err)")
+    }//end do
+  }
+
   static var allTests : [(String, (PerfectMosquittoTests) -> () throws -> Void)] {
     Mosquitto.OpenLibrary()
 
@@ -268,7 +309,9 @@ class PerfectMosquittoTests: XCTestCase {
       ("testSubscription", testSubscription),
       ("testUnsubscription", testUnsubscription),
       ("testMessaging", testMessaging),
-      ("testThreadMessaging", testThreadMessaging)
+      ("testThreadMessaging", testThreadMessaging),
+      ("testPW", testPW),
+      ("testWill", testWill)
     ]
   }
 }

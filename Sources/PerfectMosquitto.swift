@@ -251,44 +251,35 @@ public class Mosquitto {
   /// private key. If your private key is encrypted, provide a password .
   ///
   /// - parameters:
-  ///   - caFile: String, path to a file containing the PEM encoded trusted CA certificate files. Either cafile or capath must not be NULL.
+  ///   - caFile: String, path to a file containing the PEM encoded trusted CA certificate files. Either cafile or capath must not be nil.
   ///   - caPath: String, path to a directory containing the PEM encoded trusted CA certificate files. See mosquitto.conf for more details on configuring this directory. Either cafile or capath must not be nil.
-  ///   - certFile: String?, path to a file containing the PEM encoded certificate file for this client. If nil, keyfile will be ignored
-  ///   - keyfile: String?, path to a file containing the PEM encoded private key for this client. Will be igonred if no certFile presents
+  ///   - certFile: String?, path to a file containing the PEM encoded certificate file for this client. If nil, keyfile must be nil, too
+  ///   - keyfile: String?, path to a file containing the PEM encoded private key for this client. if nil, the certfile must be nil, too.
   ///   - keyPass: String?, if keyfile is encrypted, set this password to decryption.
   /// - throws:
   ///   Exception
   public func setTLS(caFile: String, caPath: String, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws {
-    let h = _handle
     var r = Int32(0)
-    if let cf = certFile {
-      if let kf = keyFile {
-        if let kp = keyPass {
-          self.tlsPassword = kp
-          r = mosquitto_tls_set(h, caFile, caPath, cf, kf) { buf, size, rwflag, me in
-            guard let myself = me, let mosquitto = Mosquitto.Manager[unsafeBitCast(myself, to: OpaquePointer.self)] else {
-              return 0
-            }//end guard
-            if mosquitto.tlsPassword.isEmpty { return 0 }
-            return mosquitto.tlsPassword.withCString { ptr -> Int32 in
-              let l = Int32(strlen(ptr))
-              let sz = l < size ? l : size - 1
-              #if os(Linux)
-                memcpy(buf!, ptr, Int(sz))
-              #else
-                memcpy(buf, ptr, Int(sz))
-              #endif
-              return sz
-            }//end return password
-          }//end tls-set
-        }else{
-          r = mosquitto_tls_set(h, caFile, caPath, cf, kf, nil)
-        }//end if keyPass
-      }else {
-        r = mosquitto_tls_set(h, caFile, caPath, cf, nil, nil)
-      }//end if keyFile
-    } else {
-      r = mosquitto_tls_set(h, caFile, caPath, nil, nil, nil)
+    if let kp = keyPass {
+      self.tlsPassword = kp
+      r = mosquitto_tls_set(_handle, caFile, caPath, certFile, keyFile) { buf, size, rwflag, me in
+        guard let myself = me, let mosquitto = Mosquitto.Manager[unsafeBitCast(myself, to: OpaquePointer.self)] else {
+          return 0
+        }//end guard
+        if mosquitto.tlsPassword.isEmpty { return 0 }
+        return mosquitto.tlsPassword.withCString { ptr -> Int32 in
+          let l = Int32(strlen(ptr))
+          let sz = l < size ? l : size - 1
+          #if os(Linux)
+            memcpy(buf!, ptr, Int(sz))
+          #else
+            memcpy(buf, ptr, Int(sz))
+          #endif
+          return sz
+        }//end return password
+      }//end tls-set
+    }else{
+      r = mosquitto_tls_set(_handle, caFile, caPath, certFile, keyFile, nil)
     }//end if certFile
     guard r == Exception.SUCCESS.rawValue else {
       throw Mosquitto.Panic
