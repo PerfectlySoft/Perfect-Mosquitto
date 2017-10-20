@@ -84,7 +84,7 @@ $ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/pkgconfig"
 本项目需要 Ubuntu 16.04 静态函数库 `libmosquitto-dev`:
 
 ```
-$ apt-get libmosquitto-dev
+$ sudo apt-get install -y libmosquitto-dev
 ```
 
 

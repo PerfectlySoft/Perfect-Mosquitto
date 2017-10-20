@@ -81,7 +81,7 @@ $ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/pkgconfig"
 This project depends on Ubuntu 16.04 library `libmosquitto-dev`:
 
 ```
-$ apt-get libmosquitto-dev
+$ sudo apt-get install -y libmosquitto-dev
 ```
 
 ## Quick Start

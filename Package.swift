@@ -23,7 +23,7 @@ let package = Package(
     name: "PerfectMosquitto",
     dependencies: [
       .Package(url: "https://github.com/PerfectlySoft/Perfect-libMosquitto.git", majorVersion: 1),
-      .Package(url: "https://github.com/PerfectlySoft/Perfect-LinuxBridge.git", majorVersion: 2)
+      .Package(url: "https://github.com/PerfectlySoft/Perfect-LinuxBridge.git", majorVersion: 3)
     ]
 )
 #else
