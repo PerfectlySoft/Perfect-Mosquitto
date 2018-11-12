@@ -20,6 +20,7 @@ import XCTest
 @testable import PerfectMosquitto
 import Foundation
 
+let mqttServer = "test.mosquitto.org"
 class PerfectMosquittoTests: XCTestCase {
 
   deinit {
@@ -39,7 +40,7 @@ class PerfectMosquittoTests: XCTestCase {
       }//end if
     }//end OnConnect
     do {
-      try m.connect()
+      try m.connect(host :mqttServer)
     }catch(let err) {
       XCTFail("\(testID) connect() fault: \(err)")
     }//end do
@@ -84,7 +85,7 @@ class PerfectMosquittoTests: XCTestCase {
       print(qosArray)
     }//end onsubscribe
     do {
-      try m.connect()
+      try m.connect(host :mqttServer)
     }catch(let err) {
       XCTFail("\(testID) connection() fault: \(err)")
     }//end do
@@ -128,7 +129,7 @@ class PerfectMosquittoTests: XCTestCase {
       print(result)
     }//end onsubscribe
     do {
-      try m.connect()
+      try m.connect(host :mqttServer)
     }catch(let err) {
       XCTFail("\(testID) connection() fault: \(err)")
     }//end do
@@ -168,7 +169,7 @@ class PerfectMosquittoTests: XCTestCase {
       received += 1
     }//end on Message
     do {
-      try m.connect()
+      try m.connect(host :mqttServer)
       m.setMessageRetry(max: 3)
       try m.subscribe(topic: topic)
     }catch(let err) {
@@ -227,7 +228,7 @@ class PerfectMosquittoTests: XCTestCase {
       }//end if
     }//end on Message
     do {
-      try m.connect()
+      try m.connect(host :mqttServer)
       try m.subscribe(topic: topic)
       try m.start()
     }catch(let err) {
@@ -288,7 +289,7 @@ class PerfectMosquittoTests: XCTestCase {
       msg.topic = "topic/on/unexpected/disconnect"
       msg.string = "will message"
       try m.setConfigWill(message: msg)
-      try m.connect()
+      try m.connect(host :mqttServer)
     }catch(let err) {
       XCTFail("\(testID) connect() fault: \(err)")
     }//end do
