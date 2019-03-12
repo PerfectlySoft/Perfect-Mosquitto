@@ -1,0 +1,5 @@
+module cmosquitto [system] {
+  header "cmosquitto.h"
+  link "mosquitto"
+  export *
+}

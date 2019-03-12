@@ -17,13 +17,7 @@
 //===----------------------------------------------------------------------===//
 //
 #if os(Linux)
-  import SwiftGlibc
-  import LinuxBridge
-
-var errno: Int32 {
-  return linux_errno()
-}//end errno
-
+  import Glibc
 #else
   import Darwin
 #endif
