@@ -23,7 +23,7 @@
 
 <p align="center">
     <a href="https://developer.apple.com/swift/" target="_blank">
-        <img src="https://img.shields.io/badge/Swift-3.0-orange.svg?style=flat" alt="Swift 3.0">
+        <img src="https://img.shields.io/badge/Swift-4.2-orange.svg?style=flat" alt="Swift 4.2">
     </a>
     <a href="https://developer.apple.com/swift/" target="_blank">
         <img src="https://img.shields.io/badge/Platforms-OS%20X%20%7C%20Linux%20-lightgray.svg?style=flat" alt="Platforms OS X | Linux">
@@ -47,7 +47,7 @@
 
 该软件使用SPM进行编译和测试，本软件也是[Perfect](https://github.com/PerfectlySoft/Perfect)项目的一部分，可以作为服务器组件独立运行。
 
-请确保您已经安装并激活了最新版本的 Swift 3.0 tool chain 工具链。
+请确保您已经安装并激活了最新版本的 Swift tool chain 工具链。
 
 ## OS X 编译说明
 
@@ -254,15 +254,6 @@ API|参数|说明
 
 - 解释错误信息（英语）`static func Explain(_ fault: Exception) -> String`
  
-
-
-### 问题报告、内容贡献和客户支持
-
-我们目前正在过渡到使用JIRA来处理所有源代码资源合并申请、修复漏洞以及其它有关问题。因此，GitHub 的“issues”问题报告功能已经被禁用了。
-
-如果您发现了问题，或者希望为改进本文提供意见和建议，[请在这里指出](http://jira.perfect.org:8080/servicedesk/customer/portal/1).
-
-在您开始之前，请参阅[目前待解决的问题清单](http://jira.perfect.org:8080/projects/ISS/issues).
 
 ## 更多信息
 关于本项目更多内容，请参考[perfect.org](http://perfect.org).

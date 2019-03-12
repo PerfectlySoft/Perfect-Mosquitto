@@ -1,3 +1,4 @@
+// swift-tools-version:4.2
 //
 //  Package.swift
 //  Perfect-Mosquitto
@@ -18,17 +19,26 @@
 //
 import PackageDescription
 
-#if os(Linux)
 let package = Package(
-    name: "PerfectMosquitto",
-    dependencies: [
-      .Package(url: "https://github.com/PerfectlySoft/Perfect-libMosquitto.git", majorVersion: 1),
-      .Package(url: "https://github.com/PerfectlySoft/Perfect-LinuxBridge.git", majorVersion: 3)
+  name: "PerfectMosquitto",
+  products: [
+    .library(name: "PerfectMosquitto", targets: ["PerfectMosquitto"]),
+    ],
+  dependencies: [
+    ],
+  targets: [
+    .systemLibrary(name: "cmosquitto",
+      pkgConfig: "mosquitto",
+      providers:[
+        .brew(["mosquitto"]),
+        .apt(["libmosquitto-dev"])
+      ]
+    ),
+    .target(name: "PerfectMosquitto", dependencies: [
+      "cmosquitto",
+    ]),
+    .testTarget(name: "PerfectMosquittoTests", dependencies: [
+      "PerfectMosquitto",
+      ]),
     ]
 )
-#else
-let package = Package(
-    name: "PerfectMosquitto",
-    dependencies: [.Package(url: "https://github.com/PerfectlySoft/Perfect-libMosquitto.git", majorVersion: 1)]
-)
-#endif

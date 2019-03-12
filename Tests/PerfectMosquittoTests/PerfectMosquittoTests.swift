@@ -260,7 +260,7 @@ class PerfectMosquittoTests: XCTestCase {
       XCTFail("\(testID) disconnect() fault: \(err)")
     }//end do
   }
-
+/*
   func testPW() {
 
     let testID = "01-unpwd-set"
@@ -301,7 +301,7 @@ class PerfectMosquittoTests: XCTestCase {
       XCTFail("\(testID) disconnect() fault: \(err)")
     }//end do
   }
-
+*/
   static var allTests : [(String, (PerfectMosquittoTests) -> () throws -> Void)] {
     Mosquitto.OpenLibrary()
 
@@ -311,8 +311,8 @@ class PerfectMosquittoTests: XCTestCase {
       ("testUnsubscription", testUnsubscription),
       ("testMessaging", testMessaging),
       ("testThreadMessaging", testThreadMessaging),
-      ("testPW", testPW),
-      ("testWill", testWill)
+      //("testPW", testPW),
+      //("testWill", testWill)
     ]
   }
 }
