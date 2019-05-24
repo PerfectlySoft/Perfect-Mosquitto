@@ -228,7 +228,7 @@ API|参数|说明
 
 ### TLS 配置
 
-- 设置 TLS 证书： `func setTLS(caFile: String, caPath: String, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws`
+- 设置 TLS 证书： `func setTLS(caFile: String?, caPath: String?, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws`
 
 - 设置 TLS 验证方法： `func setTLS(verify: SSLVerify = .PEER, version: String? = nil, ciphers: String? = nil) throws`
 
