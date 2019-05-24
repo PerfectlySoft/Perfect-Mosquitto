@@ -223,7 +223,7 @@ API|Parameters|Description
 
 ### TLS Configuration
 
-- Set TLS certification file: `func setTLS(caFile: String, caPath: String, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws`
+- Set TLS certification file: `func setTLS(caFile: String?, caPath: String?, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws`
 
 - Set TLS verification method: `func setTLS(verify: SSLVerify = .PEER, version: String? = nil, ciphers: String? = nil) throws`
 

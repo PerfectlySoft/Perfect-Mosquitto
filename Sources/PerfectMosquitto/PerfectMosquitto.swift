@@ -245,14 +245,14 @@ public class Mosquitto {
   /// private key. If your private key is encrypted, provide a password .
   ///
   /// - parameters:
-  ///   - caFile: String, path to a file containing the PEM encoded trusted CA certificate files. Either cafile or capath must not be nil.
-  ///   - caPath: String, path to a directory containing the PEM encoded trusted CA certificate files. See mosquitto.conf for more details on configuring this directory. Either cafile or capath must not be nil.
+  ///   - caFile: String?, path to a file containing the PEM encoded trusted CA certificate files. Either cafile or capath must not be nil.
+  ///   - caPath: String?, path to a directory containing the PEM encoded trusted CA certificate files. See mosquitto.conf for more details on configuring this directory. Either cafile or capath must not be nil.
   ///   - certFile: String?, path to a file containing the PEM encoded certificate file for this client. If nil, keyfile must be nil, too
   ///   - keyfile: String?, path to a file containing the PEM encoded private key for this client. if nil, the certfile must be nil, too.
   ///   - keyPass: String?, if keyfile is encrypted, set this password to decryption.
   /// - throws:
   ///   Exception
-  public func setTLS(caFile: String, caPath: String, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws {
+  public func setTLS(caFile: String?, caPath: String?, certFile: String? = nil, keyFile: String? = nil, keyPass: String? = nil) throws {
     var r = Int32(0)
     if let kp = keyPass {
       self.tlsPassword = kp
