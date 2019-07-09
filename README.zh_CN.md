@@ -59,6 +59,20 @@
 $ brew install mosquitto
 ```
 
+**注意** 
+
+- 需要增加头文件的符号链接（假设当前mosquitto库版本为1.6.3）
+
+``` bash
+$ cd /usr/local/include && ln -s ../Cellar/mosquitto/1.6.3/include/mosquitto.h 
+```
+
+- 同时追加 `pkgconfig` 路径：
+
+``` bash
+export PKG_CONFIG_PATH="/usr/local/Cellar/mosquitto/1.6.3/share/pkgconfig"
+```
+
 ## Linux 编译说明
 
 本项目需要 Ubuntu 16.04 静态函数库 `libmosquitto-dev`:

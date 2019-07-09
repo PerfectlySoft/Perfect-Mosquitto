@@ -55,6 +55,20 @@ This project depends on mosquitto library. To install on mac OS, try command `br
 $ brew install mosquitto
 ```
 
+**Note** 
+
+- You may need to add a symbol link like this (assuming mosquitto lib version 1.6.3)
+
+``` bash
+$ cd /usr/local/include && ln -s ../Cellar/mosquitto/1.6.3/include/mosquitto.h 
+```
+
+- Also add the mosquitto `pkgconfig` path into environments:
+
+``` bash
+export PKG_CONFIG_PATH="/usr/local/Cellar/mosquitto/1.6.3/share/pkgconfig"
+```
+
 ## Linux Notes
 
 This project depends on Ubuntu 16.04 library `libmosquitto-dev`:
