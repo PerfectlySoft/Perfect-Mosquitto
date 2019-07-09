@@ -59,26 +59,6 @@
 $ brew install mosquitto
 ```
 
-### PC 配置文件
-
-本项目同时需要手工编辑配置文件`/usr/local/lib/pkgconfig/mosquitto.pc`，内容如下：
-
-```
-Name: mosquitto
-Description: Mosquitto Client Library
-Version: 1.4.11
-Requires:
-Libs: -L/usr/local/lib -lmosquitto
-Cflags: -I/usr/local/include
-
-```
-
-并且请确定当前终端环境中包括变量 `$PKG_CONFIG_PATH`:
-
-```
-$ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/pkgconfig"
-```
-
 ## Linux 编译说明
 
 本项目需要 Ubuntu 16.04 静态函数库 `libmosquitto-dev`:

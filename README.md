@@ -55,27 +55,6 @@ This project depends on mosquitto library. To install on mac OS, try command `br
 $ brew install mosquitto
 ```
 
-### PC File
-
-A package configuration file is needed, for example, `/usr/local/lib/pkgconfig/mosquitto.pc` as below:
-
-```
-Name: mosquitto
-Description: Mosquitto Client Library
-Version: 1.4.11
-Requires:
-Libs: -L/usr/local/lib -lmosquitto
-Cflags: -I/usr/local/include
-
-```
-
-
-Please also export an environmental variable called `$PKG_CONFIG_PATH`:
-
-```
-$ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/lib/pkgconfig"
-```
-
 ## Linux Notes
 
 This project depends on Ubuntu 16.04 library `libmosquitto-dev`:
