@@ -216,11 +216,11 @@ public class Mosquitto {
   /// Used to set options for the client.
   /// - parameters:
   ///   - version: MQTTVersion, default is .V31
-  ///   - value: the option specific value
   /// - throws:
   ///   Exception
-  public func setClientOption(_ version: MQTTVersion = .V31, value: UnsafeMutableRawPointer) throws {
-    let r = mosquitto_opts_set(_handle, mosq_opt_t(version.rawValue), value)
+  public func setClientOption(_ version: MQTTVersion = .V31) throws {
+		var value = version.rawValue
+		let r = mosquitto_opts_set(_handle, MOSQ_OPT_PROTOCOL_VERSION, &value)
     guard r == Exception.SUCCESS.rawValue else {
       throw Mosquitto.Panic
     }//end guard

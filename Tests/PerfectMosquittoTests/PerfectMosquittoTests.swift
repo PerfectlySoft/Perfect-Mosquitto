@@ -27,6 +27,21 @@ class PerfectMosquittoTests: XCTestCase {
     Mosquitto.CloseLibrary()
 
   }
+
+	func testVersions() {
+		let testID = "06-versions"
+    let m = Mosquitto(id: testID)
+		do {
+			try m.setClientOption(.V31)
+		} catch( let err) {
+			XCTFail("set V31 failed: \(err)")
+		}
+		do {
+			try m.setClientOption(.V311)
+		} catch( let err) {
+			XCTFail("set V31 failed: \(err)")
+		}
+	}
   func testConnection() {
 
     let testID = "01-con-discon-success"
@@ -311,6 +326,7 @@ class PerfectMosquittoTests: XCTestCase {
       ("testUnsubscription", testUnsubscription),
       ("testMessaging", testMessaging),
       ("testThreadMessaging", testThreadMessaging),
+			("testVersions", testVersions)
       //("testPW", testPW),
       //("testWill", testWill)
     ]
